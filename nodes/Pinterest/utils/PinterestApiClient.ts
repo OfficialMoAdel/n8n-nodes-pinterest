@@ -64,7 +64,9 @@ export class PinterestApiClient {
 		);
 
 		// Set logger on rate limiter for integrated logging
-		this.rateLimiter.setLogger(this.logger);
+		if (typeof this.rateLimiter.setLogger === 'function') {
+			this.rateLimiter.setLogger(this.logger);
+		}
 	}
 
 	/**
