@@ -18,8 +18,8 @@ module.exports = {
 			files: ['./nodes/**/*.ts'],
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			rules: {
-				// Basic production rules - keep it simple
-				'no-console': 'warn', // Allow console for now, just warn
+				// Allow console statements in production for logging
+				'no-console': 'off', // Disable console warnings for production
 				'no-debugger': 'error',
 			},
 		},
@@ -27,8 +27,8 @@ module.exports = {
 			files: ['./credentials/**/*.ts'],
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			rules: {
-				// Basic production rules - keep it simple
-				'no-console': 'warn', // Allow console for now, just warn
+				// Allow console statements in production for logging
+				'no-console': 'off', // Disable console warnings for production
 				'no-debugger': 'error',
 			},
 		},
