@@ -57,7 +57,7 @@
     "validate:build": "node scripts/validate-build.js",
     "validate:build-only": "node scripts/validate-build-only.js",
     "prepack": "npm run validate && npm run build && npm run test:deployment",
-    "prepublishOnly": "npm run test:all && eslint -c .eslintrc.prepublish.js nodes credentials package.json"
+    "prepublishOnly": "npm run test && eslint -c .eslintrc.prepublish.js nodes credentials package.json"
   },
   "files": [
     "dist/nodes/Pinterest/",

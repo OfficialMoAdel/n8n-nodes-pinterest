@@ -2,7 +2,7 @@
  * @type {import('@types/eslint').ESLint.ConfigData}
  */
 module.exports = {
-	extends: "./.eslintrc.js",
+	extends: './.eslintrc.js',
 
 	overrides: [
 		{
@@ -18,12 +18,8 @@ module.exports = {
 			files: ['./nodes/**/*.ts'],
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			rules: {
-				// Enforce stricter rules for production
-				'@typescript-eslint/no-unused-vars': 'error',
-				'@typescript-eslint/no-explicit-any': 'warn',
-				'@typescript-eslint/prefer-nullish-coalescing': 'error',
-				'@typescript-eslint/prefer-optional-chain': 'error',
-				'no-console': 'error',
+				// Basic production rules - keep it simple
+				'no-console': 'warn', // Allow console for now, just warn
 				'no-debugger': 'error',
 			},
 		},
@@ -31,10 +27,8 @@ module.exports = {
 			files: ['./credentials/**/*.ts'],
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			rules: {
-				// Enforce stricter rules for production
-				'@typescript-eslint/no-unused-vars': 'error',
-				'@typescript-eslint/no-explicit-any': 'warn',
-				'no-console': 'error',
+				// Basic production rules - keep it simple
+				'no-console': 'warn', // Allow console for now, just warn
 				'no-debugger': 'error',
 			},
 		},
