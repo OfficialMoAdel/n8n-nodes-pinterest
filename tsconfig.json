@@ -1,0 +1,52 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"target": "es2020",
+		"lib": ["es2020", "es2021", "es2022.error"],
+		"removeComments": true,
+		"useUnknownInCatchVariables": false,
+		"forceConsistentCasingInFileNames": true,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"strictNullChecks": true,
+		"strictFunctionTypes": true,
+		"strictBindCallApply": true,
+		"strictPropertyInitialization": true,
+		"noImplicitThis": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": false,
+		"preserveConstEnums": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"incremental": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"outDir": "./dist/",
+		"rootDir": "./",
+		"baseUrl": "./",
+		"paths": {
+			"@/*": ["./nodes/*"],
+			"@credentials/*": ["./credentials/*"]
+		}
+	},
+	"include": [
+		"credentials/**/*",
+		"nodes/**/*",
+		"package.json"
+	],
+	"exclude": [
+		"node_modules",
+		"dist",
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"**/__tests__/**/*",
+		"coverage"
+	]
+}

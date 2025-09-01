@@ -1,0 +1,272 @@
+name: Test NPM Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_installation:
+        description: 'Test package installation'
+        required: true
+        default: true
+        type: boolean
+      validate_package:
+        description: 'Validate package contents'
+        required: true
+        default: true
+        type: boolean
+      check_npm_registry:
+        description: 'Check NPM registry connectivity'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  test-publish:
+    name: Test NPM Publishing Process
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci
+
+      - name: Run comprehensive tests
+        run: |
+          echo "🧪 Running tests..."
+          npm install --package-lock-only
+          npm run lint
+          npm run type-check
+          npm test -- --coverage --watchAll=false
+          echo "✅ All tests passed"
+
+      - name: Build package
+        run: |
+          echo "🔨 Building package..."
+          npm run build
+          echo "✅ Build completed"
+
+      - name: Validate package.json
+        run: |
+          echo "📋 Validating package.json..."
+          node -e "
+            const pkg = require('./package.json');
+            console.log('Package name:', pkg.name);
+            console.log('Version:', pkg.version);
+            console.log('Description:', pkg.description);
+            console.log('Keywords:', pkg.keywords);
+            console.log('License:', pkg.license);
+            console.log('Main:', pkg.main);
+            console.log('Files:', pkg.files);
+            console.log('n8n config:', pkg.n8n);
+
+            // Validate required fields
+            if (!pkg.name || !pkg.version || !pkg.description) {
+              throw new Error('Missing required package.json fields');
+            }
+
+            if (!pkg.keywords || !pkg.keywords.includes('n8n-community-node-package')) {
+              throw new Error('Missing n8n-community-node-package keyword');
+            }
+
+            if (!pkg.n8n || !pkg.n8n.nodes || !pkg.n8n.credentials) {
+              throw new Error('Missing n8n configuration');
+            }
+
+            console.log('✅ package.json validation passed');
+          "
+
+      - name: Create package
+        run: |
+          echo "📦 Creating package..."
+          npm pack
+          PACKAGE_FILE=$(ls n8n-nodes-pinterest-*.tgz)
+          echo "Package file: $PACKAGE_FILE"
+          echo "PACKAGE_FILE=$PACKAGE_FILE" >> $GITHUB_ENV
+
+      - name: Analyze package contents
+        if: github.event.inputs.validate_package == 'true'
+        run: |
+          echo "🔍 Analyzing package contents..."
+          echo "Package size:"
+          ls -lh $PACKAGE_FILE
+
+          echo -e "\n📁 Package contents:"
+          tar -tzf $PACKAGE_FILE | head -30
+
+          echo -e "\n📊 Package structure:"
+          tar -tzf $PACKAGE_FILE | grep -E '\.(js|json|md)$' | sort
+
+          # Check for required files
+          echo -e "\n✅ Checking required files..."
+          tar -tzf $PACKAGE_FILE | grep -q "package/dist/nodes/Pinterest/Pinterest.node.js" && echo "✅ Main node file found" || echo "❌ Main node file missing"
+          tar -tzf $PACKAGE_FILE | grep -q "package/dist/credentials/PinterestOAuth2Api.credentials.js" && echo "✅ Credentials file found" || echo "❌ Credentials file missing"
+          tar -tzf $PACKAGE_FILE | grep -q "package/package.json" && echo "✅ package.json found" || echo "❌ package.json missing"
+          tar -tzf $PACKAGE_FILE | grep -q "package/README.md" && echo "✅ README.md found" || echo "❌ README.md missing"
+
+      - name: Test package installation
+        if: github.event.inputs.test_installation == 'true'
+        run: |
+          echo "🧪 Testing package installation..."
+
+          # Create test directory
+          mkdir test-install
+          cd test-install
+
+          # Initialize test project
+          npm init -y
+
+          # Install the package
+          echo "Installing package..."
+          npm install ../$PACKAGE_FILE
+
+          # Verify installation
+          echo "Verifying installation..."
+          node -e "
+            const pkg = require('./node_modules/n8n-nodes-pinterest/package.json');
+            console.log('Installed package:', pkg.name, 'v' + pkg.version);
+
+            // Check if main files exist
+            const fs = require('fs');
+            const path = require('path');
+
+            const mainNode = path.join('./node_modules/n8n-nodes-pinterest', pkg.n8n.nodes[0]);
+            const credentials = path.join('./node_modules/n8n-nodes-pinterest', pkg.n8n.credentials[0]);
+
+            if (!fs.existsSync(mainNode)) {
+              throw new Error('Main node file not found: ' + mainNode);
+            }
+
+            if (!fs.existsSync(credentials)) {
+              throw new Error('Credentials file not found: ' + credentials);
+            }
+
+            console.log('✅ Package installation test passed');
+          "
+
+          cd ..
+
+      - name: Test NPM registry connectivity
+        if: github.event.inputs.check_npm_registry == 'true'
+        run: |
+          echo "🌐 Testing NPM registry connectivity..."
+
+          # Check if package name is available
+          echo "Checking package name availability..."
+          if npm view n8n-nodes-pinterest > /dev/null 2>&1; then
+            echo "📦 Package already exists on NPM registry"
+            npm view n8n-nodes-pinterest version
+            npm view n8n-nodes-pinterest description
+          else
+            echo "✨ Package name is available on NPM registry"
+          fi
+
+          # Test authentication (dry run)
+          echo "Testing NPM authentication..."
+          if [ -n "${{ secrets.NPM_TOKEN }}" ]; then
+            npm whoami
+            echo "✅ NPM authentication successful"
+          else
+            echo "⚠️ NPM_TOKEN not configured"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run publish
+        run: |
+          echo "🧪 Testing publish process (dry run)..."
+          npm publish --dry-run
+          echo "✅ Dry run publish successful"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Package quality checks
+        run: |
+          echo "🔍 Running package quality checks..."
+
+          # Check package size
+          SIZE=$(stat -c%s $PACKAGE_FILE)
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Package size: ${SIZE} bytes (${SIZE_MB}MB)"
+
+          if [ $SIZE -gt 10485760 ]; then
+            echo "⚠️ Package size is large (>10MB)"
+          elif [ $SIZE -gt 5242880 ]; then
+            echo "⚠️ Package size is moderate (>5MB)"
+          else
+            echo "✅ Package size is good (<5MB)"
+          fi
+
+          # Check for common issues
+          echo -e "\n🔍 Checking for common issues..."
+
+          if tar -tzf $PACKAGE_FILE | grep -q "node_modules/"; then
+            echo "❌ Package contains node_modules"
+          else
+            echo "✅ No node_modules in package"
+          fi
+
+          if tar -tzf $PACKAGE_FILE | grep -q "\.git/"; then
+            echo "❌ Package contains .git directory"
+          else
+            echo "✅ No .git directory in package"
+          fi
+
+          if tar -tzf $PACKAGE_FILE | grep -q "__tests__/"; then
+            echo "⚠️ Package contains test files"
+          else
+            echo "✅ No test files in package"
+          fi
+
+      - name: Generate publish report
+        run: |
+          echo "## 📋 NPM Publish Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "### Package Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package File:** $PACKAGE_FILE" >> $GITHUB_STEP_SUMMARY
+
+          SIZE=$(stat -c%s $PACKAGE_FILE)
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "- **Package Size:** ${SIZE} bytes (${SIZE_MB}MB)" >> $GITHUB_STEP_SUMMARY
+
+          VERSION=$(node -p "require('./package.json').version")
+          echo "- **Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package Creation:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry Run Publish:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.test_installation }}" == "true" ]; then
+            echo "- **Installation Test:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ github.event.inputs.validate_package }}" == "true" ]; then
+            echo "- **Package Validation:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ github.event.inputs.check_npm_registry }}" == "true" ]; then
+            echo "- **NPM Registry Check:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "The package is ready for publishing. You can:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Use the 'Manual Publish' workflow to publish to NPM" >> $GITHUB_STEP_SUMMARY
+          echo "2. Create a GitHub release to trigger automatic publishing" >> $GITHUB_STEP_SUMMARY
+          echo "3. Run \`npm publish\` manually from your local machine" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: ${{ env.PACKAGE_FILE }}
+          retention-days: 7

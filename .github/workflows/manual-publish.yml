@@ -1,0 +1,173 @@
+name: Manual Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        - prerelease
+      publish_to_npm:
+        description: 'Actually publish to NPM (not just dry run)'
+        required: true
+        default: false
+        type: boolean
+      create_release:
+        description: 'Create GitHub release'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  manual-publish:
+    name: Manual Publish Process
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        registry-url: 'https://registry.npmjs.org'
+        
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run full test suite
+      run: |
+        npm run lint
+        npm test -- --coverage --watchAll=false
+        npm run build
+        
+    - name: Bump version
+      id: version
+      run: |
+        OLD_VERSION=$(node -p "require('./package.json').version")
+        npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
+        NEW_VERSION=$(node -p "require('./package.json').version")
+        echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        
+    - name: Update CHANGELOG
+      run: |
+        DATE=$(date +%Y-%m-%d)
+        NEW_VERSION=${{ steps.version.outputs.new_version }}
+        
+        # Create new changelog entry
+        cat > temp_changelog.md << EOF
+        # Changelog
+        
+        All notable changes to this project will be documented in this file.
+        
+        ## [$NEW_VERSION] - $DATE
+        
+        ### Changed
+        - Version bump to $NEW_VERSION
+        - Updated via manual publish workflow
+        
+        EOF
+        
+        # Append existing changelog (skip first 3 lines)
+        tail -n +4 CHANGELOG.md >> temp_changelog.md
+        mv temp_changelog.md CHANGELOG.md
+        
+    - name: Commit version changes
+      run: |
+        git add package.json CHANGELOG.md
+        git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
+        
+    - name: Build final package
+      run: npm run build
+      
+    - name: Test package
+      run: |
+        npm pack
+        mkdir test-install
+        cd test-install
+        npm init -y
+        npm install ../n8n-nodes-tumblr-*.tgz
+        echo "✅ Package installation test passed"
+        
+    - name: Dry run publish
+      run: |
+        echo "🧪 Testing publish (dry run)..."
+        npm publish --dry-run
+        echo "✅ Dry run successful"
+        
+    - name: Publish to NPM
+      if: github.event.inputs.publish_to_npm == 'true'
+      run: |
+        echo "🚀 Publishing to NPM..."
+        npm publish
+        echo "✅ Published to NPM successfully"
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        
+    - name: Push version changes
+      if: github.event.inputs.publish_to_npm == 'true'
+      run: |
+        git push origin main
+        
+    - name: Create Git tag
+      if: github.event.inputs.create_release == 'true'
+      run: |
+        git tag v${{ steps.version.outputs.new_version }}
+        git push origin v${{ steps.version.outputs.new_version }}
+        
+    - name: Create GitHub Release
+      if: github.event.inputs.create_release == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.new_version }}
+        release_name: Release v${{ steps.version.outputs.new_version }}
+        body: |
+          ## Changes in v${{ steps.version.outputs.new_version }}
+          
+          This release was created via manual workflow.
+          
+          ### Installation
+          ```bash
+          npm install n8n-nodes-tumblr@${{ steps.version.outputs.new_version }}
+          ```
+          
+          ### What's Changed
+          - Version bump from ${{ steps.version.outputs.old_version }} to ${{ steps.version.outputs.new_version }}
+          
+          See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.new_version, 'alpha') || contains(steps.version.outputs.new_version, 'beta') || contains(steps.version.outputs.new_version, 'rc') }}
+        
+    - name: Summary
+      run: |
+        echo "## 📋 Publish Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Old Version:** ${{ steps.version.outputs.old_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **New Version:** ${{ steps.version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Published to NPM:** ${{ github.event.inputs.publish_to_npm }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Created Release:** ${{ github.event.inputs.create_release }}" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event.inputs.publish_to_npm }}" == "true" ]; then
+          echo "- **NPM Package:** https://www.npmjs.com/package/n8n-nodes-tumblr" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ github.event.inputs.create_release }}" == "true" ]; then
+          echo "- **GitHub Release:** https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+        fi
